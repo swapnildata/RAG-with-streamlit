@@ -1,20 +1,39 @@
-import streamlit as st
-from langchain.llms import OpenAI
 import os
-openai_key = os.environ.get('OPENAI_API_KEY')
-llm=OpenAI(openai_api_key=openai_key)
-from langchain.chat_models import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
+import langchain
+from langchain import llms
+from langchain.llms import OpenAI
+from langchain.document_loaders import PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.embeddings import OpenAIEmbeddings
+from langchain_community.vectorstores import Chroma
+from langchain_openai import ChatOpenAI
+from langchain.chains import RetrievalQA
+from io import BytesIO
 
-st.title("Basic GenAI Application")
-template_string=st.text_input("Hi user. I am powerfull LLM. Ask me anything.")
-temp=st.slider('select the value for temprature',min_value=0.0, max_value=2.0, step=0.1)
-chat=ChatOpenAI(openai_api_key=openai_key,temperature=temp,model="gpt-3.5-turbo")
-prompt_template=ChatPromptTemplate.from_template(template_string)
-content=prompt_template.format_messages()
-LLM_response = chat(content)
-st.write(LLM_response.content)
-uploaded_file=st.file_uploader("Choose a text file :",type="txt")
-if uploaded_file is not None:
-    file_content = uploaded_file.read().decode("utf-8")
-    st.write(file_content)
+import streamlit as st
+OpenAI_Key=os.environ.get('OPENAI_API_KEY')
+
+if __name__=="__main__":
+    st.title("Chatboat For PDF")
+    uploaded_file=st.file_uploader("Please upload the file here for discuss with it.",type="pdf")
+    if uploaded_file is not None:
+        with open("temp.pdf", "wb") as f:
+            f.write(uploaded_file.getbuffer())
+            loader=PyPDFLoader("temp.pdf")
+            docs=loader.load()
+
+            splitter=RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+            chunks=splitter.split_documents(docs)
+    
+            embedding_model= OpenAIEmbeddings(openai_api_key=OpenAI_Key)
+   
+            db=Chroma.from_documents(chunks,embedding_model, persist_directory="db")
+
+            retrival=db.as_retriever()
+    
+            llm=ChatOpenAI(openai_api_key=OpenAI_Key)
+    
+            qa_chain=RetrievalQA.from_chain_type(llm=llm, retriever=retrival)
+            query=st.text_input("Now you can ask me the question based on the uploaded file.")
+            result=qa_chain.invoke(query)
+            st.write(result)
